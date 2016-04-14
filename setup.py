@@ -8,7 +8,7 @@ setup(
     author_email='malagori@kth.se',
     url='https://github.com/malagori/PhyloGenClust',
     packages=['phylogenclust',],
-    scripts = ['phyloGenClust', 'scripts/convertSpeciesTreeLabels.py', 'scripts/cutGeneTree' ,
+    scripts = ['runPhyloGenClust', 'scripts/convertSpeciesTreeLabels.py', 'scripts/cutGeneTree' ,
                'scripts/prepareSeqNames.py', 
                'scripts/cutReconciledGeneTree.py',
                'scripts/greedyApproach.py', 'scripts/prepareSeqNames.py' ],
