@@ -1,0 +1,248 @@
+#!/usr/bin/env python
+'''
+Created on Sep 19, 2013
+
+@author: Mehmood Alam Khan Malagori
+@email:   malagori@kth.se
+'''
+__version__= "0.1dev"
+__license__ = "GPLv3"
+
+import os
+import sys
+import argparse
+import random as rn
+import time
+import numpy as np
+import tempfile
+import csv
+import glob
+import subprocess
+
+from optparse import OptionParser
+from gfd.storeRetriveSeed import RandomSeed
+from gfd.mainAlgo import MainAlgo
+
+
+def runMPI(outDir, resultsFile, dataFile, fileFormat, seqType, boot, method, interLeaved, fastest, gtr, wag, gama, sTree, noMSA, rapidNJFlag, myRank):
+ 
+    randomSeed=0
+    
+    if myRank == 0:
+        randomSeed=rn.randrange(3, 32767, 2)
+        #print "randomSeed_%d: %s" % (myRank,randomSeed)
+    elif myRank > 0:
+        for i in xrange(1,(myRank+1)*boot):
+            randomSeed=rn.randrange(3, 32767, 2)
+        #print randomSeed
+        #print "randomSeed_%d: %s" % (myRank,randomSeed)
+            
+    mainAlgoObj= MainAlgo(outDir, resultsFile, dataFile, fileFormat, seqType, boot, method, interLeaved, fastest, gtr, wag, gama, randomSeed, sTree, noMSA, rapidNJFlag, myRank)
+    mainAlgoObj.runAlgo()
+    
+    return 1
+
+def checkExe( exePath):
+        return os.path.isfile(exePath) and os.access(exePath, os.X_OK)
+    
+def Where( program):
+    '''
+    input: name of executable
+    output: path to executable
+    '''
+    fpath, fname = os.path.split(program)
+    if fpath:
+        if checkExe(program):
+            return program
+    else:
+        for path in os.environ["PATH"].split(os.pathsep):
+            path = path.strip('"')
+            pathToProgram = os.path.join(path, program)
+            if checkExe(pathToProgram):
+                return pathToProgram
+    return None
+    
+def runMuscle(inSeqFile, work_dir):
+    '''
+    WrapMuscle() function is a wrapper over the muscle tool.
+    
+    input:  inputFile: sequences in fasta format  
+    output: MSA to file
+    '''
+    cmd= Where('muscle')
+    
+    if cmd != None:
+        print "--> Generating MSA using Muscle begins..."
+        outFile= os.path.join(work_dir,"initial.msa")
+        try:
+            FNULL = open(os.devnull, 'w')
+            subprocess.call(str(cmd+" -in "+ inSeqFile +" -maxiters 8 -out "+ outFile), shell=(sys.platform!="win32"), stdout=FNULL, stderr=True)
+        except IOError, e:
+            print ("Class: runGFD, Function: runMuscle(): %s " % e)
+        print "-->MSA generation done..."
+    else:
+        print ("Class: runGFD, Function: runMuscle(): Error: Path to 'muscle' is not set. ") 
+        sys.exit()
+    return outFile
+            
+    
+def main(argv):
+    
+    # Take care of input
+    parser = argparse.ArgumentParser(description="Parse input arguments and print output.")
+    
+    parser.add_argument('-d', metavar='seqFile',type=str, help='Specify path to the sequence file ', default= None)
+    # Notung 2.6 options
+    parser.add_argument('-st', metavar='sTree',type=str, help='Specify path to the species tree file ', default= None)
+    parser.add_argument('-f', metavar='format',type=str, help='Specify format of sequence file:  F (Fasta); P (Phylip); G (Genbank) ', default=None)
+    parser.add_argument('-t', metavar='seqType',type=str, help='Specify type of data:  d (dna); p (protein); r (rna) (default=\'d\') ', default='d')
+    parser.add_argument('-nomsa', metavar='nomsa',type=bool, help='Generate MSA. Use this option, If the input sequences are not aligned ', default=False)
+    parser.add_argument('-i', metavar='interleaved',type=bool, help='Specify if the sequence data is interleaved (default=False)', default=False)
+    parser.add_argument('-b', metavar='reps',type=int , help='Specify number of bootstraps default=1000', default=1000)
+    parser.add_argument('-z', metavar='zeta',type=float , help='Specify family support value, range [0, 1]', default=0.5)
+    parser.add_argument('-m', metavar='rsMethod',type=str, help='Specify re-sampling method: b (Bootstrap), j (Jackknife), c (Permute species for each character), o (Permute character order), s (Permute within species), r (Rewrite data))  (default=\'d\')', default='d')
+    
+    parser.add_argument('-s', metavar='seed',type=int , help='Specify initial seed. if both initialSeed and loadseed option are not provided then system time will be taken as the default seed  ', default=None)
+    parser.add_argument('-l', metavar='loadSeed',type=int , help='Specify path to a file containing previous state (default=None)', default=None)
+    parser.add_argument('-o', metavar='outFile', type=str, help='Specify the file to output the results. (default= Results.gfi)', default= 'Results.gfi')
+    parser.add_argument('-od', metavar='outDir',type=str, help='Specify path to directory to store intermediate results. If not specified intermediate results will be stored in a temporary directory which is deleted after program execution (default=None)', default=None)
+    parser.add_argument('-np', type=bool, help= 'if -np flag is provided, then no perturbed MSA will be generated. Instead Gene trees will be reconstructed from Bootstraps', default= False)
+    # rapidnj
+    parser.add_argument('-rapidnj', type=bool, help= 'if -rapidnj flag is provided, then Gene trees will be reconstructed from Bootstraps using RapidNJ tool', default= False)
+    # Fasttree options
+    parser.add_argument('-fastest', type=bool, help= 'speed up the neighbor joining phase & reduce memory usage (recommended for >50,000 sequences)', default= False)
+    #parser.add_argument('-pseudo', type=bool, help= ' use pseudocounts (recommended for highly gapped sequences)', default= False)
+    parser.add_argument('-gtr', type=bool, help= ' generalized time-reversible model (nucleotide alignments only)', default= False)
+    parser.add_argument('-wag', type=bool, help= '  Whelan-And-Goldman 2001 model (amino acid alignments only)', default= False)
+    parser.add_argument('-gamma', type=bool, help= ' after optimizing the tree under the CAT approximation, rescale the lengths to optimize the Gamma20 likelihood', default= False)
+    
+    
+    
+    args = parser.parse_args()
+    
+    dataFile        = args.d
+    boot           	= args.b
+    seedNum         = args.s
+    seedFile        = args.l
+    resultsFile      = args.o
+    seqType         = args.t
+    method          = args.m
+    interLeaved     = args.i
+    fileFormat      = args.f
+    outDir          = args.od
+    fastest         = args.fastest
+    gtr             = args.gtr
+    wag             = args.wag
+    gama            = args.gamma
+    sTree           = args.st
+    familySupportVal= args.z
+    noPMSA          = args.np
+    generateMSA     = args.nomsa
+    rapidNJFlag     = args.rapidnj
+    
+    
+    if 0 <= familySupportVal <= 1:
+        pass
+    else:
+        print "Input Error: Zeta value should be in range [0,1]"
+        sys.exit()
+    
+    
+    if outDir == None:
+        outDir=tempfile.mkdtemp()
+    elif os.path.exists(outDir) == False:
+        os.mkdir(outDir)
+    print outDir
+    
+    
+    if fileFormat == None or fileFormat not in ['F', 'P']:
+        print "Please specify one of the input sequence file formats:  F (Fasta); P (Phylip);"
+        sys.exit()
+        
+    if dataFile == None:
+        print "Please specify path to input file. "
+        sys.exit()
+
+    # instantiating RandomSeed object
+    rs=RandomSeed()
+        
+    if seedNum == None and seedFile == None:
+        seedNum= time.time()
+    elif seedNum != None and seedFile == None:
+        rs.setInitialState(seedNum)
+    elif seedFile != None and seedNum == None:
+        state= rs.getSateFromFile(seedFile)
+        rn.setstate(state)
+    
+    print "dataFile: %s"       % dataFile
+    print "boot: %d"            % boot 
+    if seedNum != None:
+        print "seed %d"             % seedNum
+    print "outFile %s"       	% resultsFile
+    
+    if sTree == None:
+        print "Error: Missing species tree file. Please provide path to species tree file"
+        sys.exit()
+    
+    # if the input is not MSA, then generate MSA for the input sequences using muscle
+    if generateMSA != False and generateMSA != None:
+        dataFile=runMuscle(dataFile, outDir)
+    
+    # serial part
+    runStatus = np.zeros(1)
+    reps= boot
+    rank=0
+    runStatus[0] =runMPI(outDir, resultsFile, dataFile, fileFormat, seqType, reps, method, interLeaved, fastest, gtr, wag, gama, sTree, noPMSA, rapidNJFlag, rank)
+
+    # Pick families which are above the given threshold
+    threshold= familySupportVal * boot
+    allOrthoFilesList= glob.glob(resultsFile+"*.sallfamilies")
+    allParaFilesList= glob.glob(resultsFile+"*.dallfamilies")
+
+    orthoDic    = {}
+    paraDic     = {}
+    cutsOrthoDic= {}
+    cutsParaDic = {}
+    # write all orthologous families above the given threshold
+    with open(resultsFile+".sfamilies", 'w') as wf:
+        orthoWriter = csv.writer(wf)
+        for orthoFile in allOrthoFilesList:
+            with open (orthoFile, 'rb') as rf:
+                orthoReader= csv.reader(rf)
+                for i in orthoReader:
+                    if i[0] not in orthoDic.keys():
+                        orthoDic[i[0]] = int(i[1])
+                       
+                        if i[0] not in cutsOrthoDic.keys():
+                            cutsOrthoDic[i[0]]= i[2]
+                        else:
+                            cutsOrthoDic[i[0]].append(i[2])
+                    else:
+                        orthoDic[i[0]] += int(i[1])
+        
+        for key, value in orthoDic.items():
+            if value >= threshold:
+                orthoWriter.writerow([key, value, cutsOrthoDic[key]])
+    # write all paralogous families above the given threshold
+    with open(resultsFile+".dfamilies", 'w') as wf:
+        paraWriter = csv.writer(wf)
+        for paraFile in allParaFilesList:
+            with open (paraFile, 'rb') as rf:
+                paraReader= csv.reader(rf)
+                for i in paraReader:
+                    if i[0] not in paraDic.keys():
+                        paraDic[i[0]] = int(i[1])
+                        
+                        if i[0] not in cutsParaDic.keys():
+                            cutsParaDic[i[0]]= i[2]
+                        else:
+                            cutsParaDic[i[0]].append(i[2])
+                    else:
+                        paraDic[i[0]] += int(i[1])
+                        
+        for key, value in paraDic.items():
+            if value >= threshold:
+                paraWriter.writerow([key, value,  cutsParaDic[key]])    
+    
+if __name__== "__main__":
+    main(sys.argv[1:])

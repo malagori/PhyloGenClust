@@ -1,0 +1,361 @@
+#!/usr/bin/env python
+__author__ = "Mehmood Alam Khan"
+__email__  = "malagori@kth.se"
+__version__= "0.9"
+__credits__ = ["Mehmood Alam Khan"]
+'''
+Created on Apr 18, 2014
+
+@author: malagori
+'''
+
+from optparse import OptionParser
+from dendropy import Tree
+import sys
+import os
+import subprocess
+import random
+import tempfile
+import csv
+
+
+def checkExe(exePath):
+    return os.path.isfile(exePath) #and os.access(exePath, os.X_OK)
+    
+def Where(program):
+    '''
+    input: name of executable
+    output: path to executable
+    '''
+    fpath, fname = os.path.split(program)
+    if fpath:
+        if checkExe(program):
+            return program
+    else:
+        for path in os.environ["PATH"].split(os.pathsep):
+            path = path.strip('"')
+            pathToProgram = os.path.join(path, program)
+            if checkExe(pathToProgram):
+                return pathToProgram
+    return None
+
+def allLeafLabels( myTree):
+    '''
+    returns the list containing all the leaf nodes' label of this tree and the internal nodes without the root label
+    '''
+    leafLabels=[]
+    internalLabelsExRoot=[]
+    for i in myTree.leaf_nodes():
+        leafLabels.append(i.get_node_str().replace("'", ""))
+    for i in myTree.internal_nodes():
+        if i.level() != 0:
+            internalLabelsExRoot.append(i.label)
+    return leafLabels, internalLabelsExRoot
+
+def onlyLeafLabels( myTree):
+    '''
+        returns the list containing labels of leaf nodes for this tree
+    '''
+    leafLabels=[]
+    for i in myTree.leaf_nodes():
+        leafLabels.append(i.get_node_str().replace("'", ""))
+    return leafLabels
+
+def readTreeFromFile( treePath):
+    '''
+    input: path to the file containing newick tree
+    return Tree object 
+    '''
+    print treePath
+    #myTree= Tree()
+    myTree= Tree.get_from_path(treePath, 'newick', annotations_as_nhx=True, extract_comment_metadata=True , suppress_annotations=False)
+    return myTree
+
+def readTreeFromString( treeString):
+    '''
+    input: string containing newick tree
+    return Tree object 
+    '''
+    #myTree= Tree()
+    myTree= Tree.get_from_string( treeString, 'newick', annotations_as_nhx=True, extract_comment_metadata=True , suppress_annotations=False)
+    
+    return myTree
+
+def setSpeciesLeafLabels( sTreePath, streeString, i):
+    '''
+        input: path to species tree
+    '''
+    global leafLabelStree
+    global internalExRootSpeceLabels
+    
+    
+    sTree= readTreeFromString(streeString)
+    sTree.write_to_path(sTreePath+'.recSpecies.'+str(i), 'newick', suppress_internal_node_labels=False,annotations_as_nhx=True, extract_comment_metadata=True , suppress_annotations=False)
+    
+    #print "species tree:"
+    #sTree.print_plot()
+    leafLabelStree, internalExRootSpeceLabels = allLeafLabels(sTree)
+
+def cutSubStringFromNotungSTree( myString, nbits):
+    '''
+    Remove the first nbits from the string and the last ']'
+        
+    '''    
+    myString=myString[nbits:]
+    myString=myString[:-1]+';'
+    
+    return myString   
+    
+def readRecGtreeAndCut(sTree, gTree, workDir, i):
+    '''
+        This function take a single reconciliation and cut at speciation nodes
+    '''
+    orthoFamilies       = {} # key= root label of subtree; value: subtree
+    paraFamailies       = {}
+    speciesOrthoCuts    = {}
+    speciesParaCuts     = {}
+    #linesTree=0
+    readStreeFlag= True
+    tok=[]
+    tok= gTree.split('/')
+    #with open(str(workDir+ "/"+ tok[-1] +'.myReconciledGeneTree.rearrange.0'), 'r') as f:
+    with open(str(workDir+ "/"+ tok[-1] +'.reconciled'), 'r') as f:
+          
+        for t in f:
+            t=t.rstrip()
+            recGTree= readTreeFromString(t)
+            if readStreeFlag == False:
+                break
+            else:
+                t= f.next()
+                t=t.rstrip()
+                t= cutSubStringFromNotungSTree(t, 22)
+                #print t
+                spTok=[]
+                spTok= sTree.split('/')
+                setSpeciesLeafLabels(workDir+"/"+spTok[-1], t, i)
+                readStreeFlag = False
+                break
+
+        cutAtSpeciationVertices( orthoFamilies, paraFamailies, recGTree, speciesOrthoCuts, speciesParaCuts)
+
+    try:
+        
+        orthoHandle = csv.writer(open(workDir+'/'+tok[-1]+".sallfamilies",  'wb'))
+        for key, value in orthoFamilies.items():
+            orthoHandle.writerow([key, value, speciesOrthoCuts[key]])
+        
+        paraHandle = csv.writer(open(workDir+'/'+tok[-1]+".dallfamilies",  'wb'))
+        for key, value in paraFamailies.items():
+            paraHandle.writerow([key, value,speciesParaCuts[key]])
+    except IOError, e:
+        print ("Class: Wrapper, Function: readRecGtreeAndCut(): %s " % e)
+
+
+def checkNotung( program):
+    for path in os.environ["PATH"].split(os.pathsep):
+        path = path.strip('"')
+        pathToProgram = os.path.join(path, program)
+        if os.path.isfile(pathToProgram):
+            return pathToProgram
+    return None
+
+def reconcileGtreeUsingNotung( sTree, gTree, workDir):
+    '''
+    This function is a wrapper over the Notung 2.6 tool. It will reconcile gene tree with species tree.
+    input: gene tree, species tree
+    output: reconciled gene tree 
+    '''
+    cmd= checkNotung('Notung-2.6.jar')
+    if cmd != None:
+        print "--> Reconciling gene trees with species tree..."  
+        try:
+            readStreeFlag= True
+            subprocess.call(str("java -jar "+cmd+" -g "+ gTree +" -s "+ sTree + " --speciestag prefix --reconcile --silent --maxtrees 1 --nolosses --outputdir "+ workDir), shell=(sys.platform!="win32"), stdout=True, stderr=True)
+#            tokenay=[]
+#            tokenay=gTree.split('/')
+#            with open(workDir+"/"+tokenay[-1]+".reconciled", 'r') as rTree:
+#                for t in rTree:
+#                    t=t.rstrip()
+#                    with open(workDir+"/"+tokenay[-1]+".myReconciledGeneTree", 'w') as gf:
+#                        gf.write(t)
+#                        
+#                    if readStreeFlag == False:
+#                        break
+#                    else:
+#                        t= rTree.next()
+#                        t=t.rstrip()
+#                        t= cutSubStringFromNotungSTree(t, 22)     
+#                        with open(workDir+"/"+tokenay[-1]+".myReconciledSpeciesTree", 'w') as sf:
+#                            sf.write(t)                 
+#                        readStreeFlag = False
+#                        break
+#            sTree= workDir+"/"+tokenay[-1]+".myReconciledSpeciesTree"
+#            gTree= workDir+"/"+tokenay[-1]+".myReconciledGeneTree"
+#            subprocess.call(str("java -jar "+cmd+" -g "+ gTree +" -s "+ sTree + " --speciestag prefix --rearrange --threshold 50% --silent --maxtrees 1 --nolosses --outputdir "+ workDir), shell=(sys.platform!="win32"), stdout=True, stderr=True)
+#            
+        except IOError, e:
+            print ("Class: Wrapper, Function: WrapNotung(): %s " % e)
+
+        print "--> Reconciliation done..."
+    else:
+        print ("Function: reconcileGtreeUsingNotung: Error: Path to 'Notung' is not set. ") 
+        sys.exit()
+
+def cutAtSpeciationVertices( orthoFamilies, paraFamailies , recGTree, speciesOrthoCuts, speciesParaCuts):
+    '''
+        This function cuts the reconciled gene tree at the speciation vertices.
+        input:     Reconciled Gene Tree, path to the file containing species tree
+        output:    families. soft orthologes and soft paraloges
+    '''
+    
+    for i in recGTree.internal_nodes():
+        leafLabels      =[]
+        
+        d= i._annotations.values_as_dict()['D']
+        s= i._annotations.values_as_dict()['S']
+        if  d == 'N':
+            # orthologous families
+            t= Tree(i)
+            leafLabels= onlyLeafLabels(t)
+            family=""
+            family= str(sorted(leafLabels))
+            
+            if s not in speciesOrthoCuts.keys():
+                speciesOrthoCuts[family]=s
+            
+            if family not in orthoFamilies.keys():
+                orthoFamilies[family]=1
+            else:
+                orthoFamilies[family] +=1
+                
+        elif s in leafLabelStree:# paralogous families
+            
+            t= Tree(i)
+          
+            leafLabels= onlyLeafLabels(t)
+            family=""
+            family= str(sorted(leafLabels))
+            
+            if s not in speciesParaCuts.keys():
+                speciesParaCuts[family]=s
+            
+            if family not in paraFamailies.keys():
+                paraFamailies[family] =1
+            else:
+                paraFamailies[family] +=1
+            
+        elif s in internalExRootSpeceLabels:
+            # paralogous families
+      
+            t= Tree(i)
+            leafLabels= onlyLeafLabels(t)
+            family=""
+            family= str(sorted(leafLabels))
+        
+            if s not in speciesParaCuts.keys():    
+                speciesParaCuts[family]=s
+                    
+            if family not in paraFamailies.keys():
+                paraFamailies[family] = 1
+            else:
+                paraFamailies[family] +=1
+     
+                    
+def Cutter(sTree, gTree, seed, workDir, i):
+    '''
+        This function control the work flow of this simulator.
+    '''
+    reconcileGtreeUsingNotung( sTree, gTree, workDir)
+    readRecGtreeAndCut(sTree, gTree, workDir, i)
+    
+    
+def main(argv):
+    #global leafLabelStree, internalExRootSpeceLabels
+    
+    '''
+    This program takes gene tree and species tree as an input, reconcile the gene
+    tree with the species tree using Notung 2.6 tool, cuts the reconciled gene tree 
+    at the speciation and duplication nodes of species tree, and finally,  
+    outputs orthologous and paralogous families
+    '''
+   
+        
+    usage = "usage: ./cutGeneTree [options]"
+    
+    description="""DESCRIPTION:     This program takes a gene tree and a species tree as an input,
+reconcile the gene tree with the species tree using Notung 2.6 tool, cuts the 
+reconciled gene tree at the speciation and duplication nodes of species 
+tree, and finally, outputs orthologous and paralogous families. 
+Note: You need to export the path to Notung 2.6."""
+
+    if len(argv) == 0:
+        print usage
+        sys.exit()
+        
+    parser = OptionParser(usage=usage, description=description )
+    
+    parser.add_option('-S','--speciesTree', 
+                      action="store", type="string", dest="speciesStree", 
+                      help='Specify path to the species tree file.')
+    parser.add_option('-d','--genesDir', 
+                      action="store", type="string", dest="genesDir", 
+                      help='Specify path to the directory containing gene trees.'+ 
+                      ' Note: this option is used when the input gene trees are more than one.')
+    parser.add_option('-p','--geneTreeExtension', 
+                      action="store", type="string", dest="geneTreeExtension", 
+                      help='Specify the extension of gene tree name. e.g: .newick or .tree etc'+
+                      ' Note: This option is used with -d option.')
+    parser.add_option('-G','--geneTree', 
+                      action="store", type="string", dest="geneTree", 
+                      help='Specify path to the gene tree file.')
+    parser.add_option('-D', '--outDirectory',
+                      action="store", type="string", dest="outDir",
+                      help='Specify path to directory to store intermediate results. If not specified intermediate results will be stored in a temporary directory which is deleted after program execution (default=None)', default=None)
+    
+    parser.add_option('-n','--nTrees', 
+                      action="store", type="int", dest="nTrees", 
+                      help='Provide the number of gene trees to be cut.', default=0)
+    parser.add_option('-s','--seed', 
+                      action="store", type="int", dest="seed", 
+                      help='provide the initial seed to pseudo random generator.', default=1211)
+    
+    (options, args) = parser.parse_args()
+    
+    
+    print "Seed: %d"            % (options.seed)
+    
+    if options.outDir == None:
+        options.outDir=tempfile.mkdtemp()
+    elif os.path.exists(options.outDir) == False:
+        os.mkdir(options.outDir)
+    print "Output directory: %s"  % (options.outDir)
+    
+    if checkExe(options.speciesStree) == True:
+        print "Species tree: %s"    % (options.speciesStree)
+    else:
+        print "Error: Species tree file not found"
+        sys.exit()
+    
+    
+    
+    if options.genesDir != None:
+        print "Gene tree Directory: %s"       % (options.geneTree)
+        if options.geneTreeExtension == None:
+            print "Input Error: Please provide Gene Tree Extension i.e. use -p option"
+            sys.exit()
+        else:
+            for i in xrange(1, options.nTrees+1):
+                print "Gene Tree: %s" %(options.genesDir+"/"+str(i)+"."+ options.geneTreeExtension)
+                Cutter(options.speciesStree, options.genesDir+"/"+str(i)+"."+ options.geneTreeExtension, options.seed, options.outDir, i)
+    else:
+        if checkExe(options.geneTree) == True:
+            print "Gene tree: %s"       % (options.geneTree)
+        else:
+            print "Error: Gene tree file not found"
+            sys.exit()
+        Cutter(options.speciesStree, options.geneTree, options.seed, options.outDir, 1)
+    
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
