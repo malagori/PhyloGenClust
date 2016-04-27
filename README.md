@@ -19,7 +19,7 @@ Installation guide to PhyloGenClust:
         
         1) tar -zxvf EMBOSS-6.x.x.tar.gz 
         2) cd EMBOSS-6.x.x
-        3) ./configure --prefix=/bubo/home/h1/mehmood/install-emboss/
+        3) ./configure --prefix=/path-to-folder/install-emboss/
         4) make
 		
         Download PHYLIPNEW from http://emboss.sourceforge.net/apps/release/6.6/embassy/index.html
