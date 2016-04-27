@@ -14,18 +14,24 @@ Installation guide to PhyloGenClust:
 		sudo apt-get install embassy-phylip 
 	   	
 	   EMBOSS-6.3.1 installation on Mac osx:
-
-		download http://emboss.sourceforge.net/apps/release/6.6/embassy/index.html
-		mkdir embassy
-		mkdir install-emboss
-		cd embassy
-		tar -zxvf phylipnew.x.x.tar.gz
-		cd phylipnew
-		./configure --prefix=/path-to-folder/install-emboss/
-		make 
-		make install
-	
-		(for more instructions, see : http://permalink.gmane.org/gmane.science.biology.emboss/636)
+        
+        Download EMBOSS-6.3.1 from http://emboss.sourceforge.net/download/
+        
+        1) tar -zxvf EMBOSS-6.x.x.tar.gz 
+        2) cd EMBOSS-6.x.x
+        3) ./configure --prefix=/bubo/home/h1/mehmood/install-emboss/
+        4) make
+		
+        Download PHYLIPNEW from http://emboss.sourceforge.net/apps/release/6.6/embassy/index.html
+		5) mkdir embassy
+		6) mkdir install-emboss
+		7) cd embassy
+		8) tar -zxvf phylipnew.x.x.tar.gz
+		9) cd phylipnew
+		10) ./configure --prefix=/path-to-folder/install-emboss/
+		11) make 
+		12) make install
+        (for more instructions, see : http://permalink.gmane.org/gmane.science.biology.emboss/636)
 	e) RapidNJ (Optional)
 	
 Export path to external libraries:
