@@ -18,21 +18,23 @@ Installation guide to PhyloGenClust:
         Download EMBOSS-6.3.1 from http://emboss.sourceforge.net/download/
         
         1) tar -zxvf EMBOSS-6.x.x.tar.gz 
+        2) mkdir install-emboss
         2) cd EMBOSS-6.x.x
         3) ./configure --prefix=/path-to-folder/install-emboss/
         4) make
+        5) make install
 		
-        Download PHYLIPNEW from http://emboss.sourceforge.net/apps/release/6.6/embassy/index.html
-		5) mkdir embassy
-		6) mkdir install-emboss
+        Download PHYLIPNEW from http://emboss.sourceforge.net/apps/release/6.6/embassy/index.html to some folder, for-example: embassy.
+		6) mkdir embassy
 		7) cd embassy
 		8) tar -zxvf phylipnew.x.x.tar.gz
 		9) cd phylipnew
 		10) ./configure --prefix=/path-to-folder/install-emboss/
 		11) make 
 		12) make install
-        (for more instructions, see : http://permalink.gmane.org/gmane.science.biology.emboss/636)
+        (for more instructions, see : http://emboss.sourceforge.net/docs/faq.html)
 	e) RapidNJ (Optional)
+
 	
 Export path to external libraries:
 		
@@ -44,6 +46,12 @@ Export path to external libraries:
 			
 	Notung path:
 			export PATH=/path-to-Notung-package/:$PATH
+    
+    Phylip path:
+            export PATH=/path-to-PHYLIPNEW-3.69.650/src:$PATH
+    
+    RapidNJ (optional):
+            export PATH=/path-to-rapidNJ/bin:$PATH
 
 Run GFD:
 
