@@ -5,7 +5,7 @@ Installation guide to PhyloGenClust:
 	Required packages:
 	a) pip install numpy 
     b) install DendroPy version 3.12.0
-        (You can find it under the dendropy-lib folder in PyloGenClust packge)
+        (You can find it under the dendropy-lib folder in PyloGenClust package)
         tar -zxvf DendroPy-3.12.0.tar.gz
         cd DendroPy-3.12.0
         python setup.py install
